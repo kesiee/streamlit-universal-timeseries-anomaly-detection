@@ -232,6 +232,13 @@ if df_raw is not None:
     num_cols    = df_raw.select_dtypes(include="number").columns.tolist()
     cat_cols    = df_raw.select_dtypes(include=["object","category"]).columns.tolist()
 
+    # Also allow numeric columns with low cardinality as group-by (e.g. store_nbr, sensor_id)
+    low_card_num = [
+        c for c in num_cols
+        if df_raw[c].nunique() <= 200 and df_raw[c].nunique() >= 2
+    ]
+    groupable_cols = sorted(set(cat_cols + low_card_num))
+
     cfg1, cfg2, cfg3 = st.columns(3)
     with cfg1:
         ts_default = ts_guesses[0] if ts_guesses else all_cols[0]
@@ -243,9 +250,14 @@ if df_raw is not None:
         target_col = st.selectbox("📈 Target (numeric)", all_cols,
                                   index=all_cols.index(num_default))
     with cfg3:
-        group_cols = st.multiselect("🏷 Group-by columns (optional)",
-                                    [c for c in cat_cols if c != ts_col],
-                                    help="e.g. building_id, sensor_name, ticker")
+        avail_group = [c for c in groupable_cols if c != ts_col and c != target_col]
+        group_cols = st.multiselect(
+            "🏷 Group-by columns (optional)",
+            avail_group,
+            help="String, category, or low-cardinality numeric columns (e.g. store_nbr, building_id, sensor_id)",
+        )
+        if low_card_num:
+            st.caption(f"💡 Numeric ID columns detected: {', '.join(low_card_num)}")
 
     run_btn = st.button("🚀 Run Anomaly Detection", type="primary", use_container_width=False)
 
@@ -275,19 +287,29 @@ if df_raw is not None:
         df = df.dropna(subset=[target_col]).reset_index(drop=True)
 
         # ── Bollinger Band detection per group ────────────────────────────────
+        # Cast low-cardinality numeric group cols to str so keys are always strings
+        for gc in group_cols:
+            if pd.api.types.is_numeric_dtype(df[gc]):
+                df[gc] = df[gc].astype(int).astype(str)
+
         if group_cols:
-            groups = df.groupby(group_cols, sort=False)
+            groups = df.groupby(group_cols, sort=True)
             group_keys = list(groups.groups.keys())[:int(max_groups)]
         else:
             groups     = None
             group_keys = ["(all data)"]
+
+        def gk_to_label(gk):
+            if isinstance(gk, (str, int, float)):
+                return str(gk)
+            return " | ".join(str(x) for x in gk)
 
         # Process all groups → build result df
         result_frames = []
         for gk in group_keys:
             if groups is not None:
                 sub = groups.get_group(gk).copy()
-                label = " | ".join([gk] if isinstance(gk, str) else [str(x) for x in gk])
+                label = gk_to_label(gk)
             else:
                 sub   = df.copy()
                 label = "(all data)"
@@ -343,19 +365,15 @@ if df_raw is not None:
 
         # Group selector
         if len(group_keys) > 1:
-            display_labels = [
-                " | ".join([gk] if isinstance(gk, str) else [str(x) for x in gk])
-                for gk in group_keys
-            ]
+            display_labels = [gk_to_label(gk) for gk in group_keys]
             selected_label = st.selectbox(
-                "Select group to view",
+                f"Select group to view ({len(group_keys)} total)",
                 display_labels,
-                format_func=lambda x: f"📂 {x}",
+                format_func=lambda x: f"📂 Store {x}" if group_cols and any(
+                    "store" in c.lower() for c in group_cols) else f"📂 {x}",
             )
         else:
-            selected_label = group_keys[0] if group_cols else "(all data)"
-            if not isinstance(selected_label, str):
-                selected_label = " | ".join(str(x) for x in selected_label)
+            selected_label = gk_to_label(group_keys[0]) if group_cols else "(all data)"
 
         # Filter to selected group
         plot_df = df_result[df_result["_group_lbl"] == selected_label].sort_values(ts_col)
@@ -532,4 +550,3 @@ else:
     </div>
     """, unsafe_allow_html=True)
     st.info("👆 Upload a file above or click **▶ Load Sample Data** to try with a smart buildings energy dataset.")
-
