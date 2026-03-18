@@ -159,9 +159,70 @@ with st.sidebar:
     st.caption("Universal time-series · Bollinger Bands")
     st.markdown("---")
     st.markdown("**⚙️ Detection Settings**")
-    bb_window = st.slider("Rolling Window", 5, 100, 20, help="Periods for rolling mean/std")
-    bb_std    = st.slider("Std Multiplier", 0.5, 4.0, 1.5, step=0.1,
-                          help="1.5 = sensitive · 2.0 = standard · 3.0 = conservative")
+    bb_window = st.slider("Rolling Window (periods)", 5, 100, 20,
+                          help="How many past data points the rolling mean & std are computed over")
+    bb_std    = st.slider("Std Multiplier (σ)", 0.5, 4.0, 1.5, step=0.1,
+                          help="Width of the expected range. Lower = more sensitive.")
+
+    # ── Live explainer ─────────────────────────────────────────────────────
+    import math as _math
+    def _ncdf(x): return (1 + _math.erf(x / _math.sqrt(2))) / 2
+    pct_within = (_ncdf(bb_std) - _ncdf(-bb_std)) * 100
+    pct_outside = 100 - pct_within
+
+    # Sensitivity label
+    if bb_std <= 1.0:   sens_label, sens_color = "Very Sensitive", "#dc2626"
+    elif bb_std <= 1.5: sens_label, sens_color = "Sensitive",      "#f59e0b"
+    elif bb_std <= 2.0: sens_label, sens_color = "Standard",       "#6366f1"
+    elif bb_std <= 2.5: sens_label, sens_color = "Conservative",   "#059669"
+    else:               sens_label, sens_color = "Very Conservative","#0ea5e9"
+
+    st.markdown(f"""
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-top:10px;">
+      <div style="font-size:10px;font-family:'JetBrains Mono',monospace;color:#94a3b8;letter-spacing:.1em;margin-bottom:8px;">BAND COVERAGE CALCULATOR</div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <span style="font-size:11px;color:#475569;">Sensitivity</span>
+        <span style="font-size:11px;font-weight:600;color:{sens_color};">{sens_label}</span>
+      </div>
+
+      <div style="background:#e2e8f0;border-radius:4px;height:6px;margin-bottom:10px;overflow:hidden;">
+        <div style="background:linear-gradient(90deg,#6366f1,#0ea5e9);height:100%;width:{pct_within:.1f}%;border-radius:4px;"></div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+        <div style="text-align:center;flex:1;">
+          <div style="font-size:18px;font-weight:600;color:#059669;">{pct_within:.1f}%</div>
+          <div style="font-size:10px;color:#94a3b8;font-family:'JetBrains Mono',monospace;">within bands</div>
+          <div style="font-size:9px;color:#cbd5e1;">expected range</div>
+        </div>
+        <div style="width:1px;background:#e2e8f0;margin:0 8px;"></div>
+        <div style="text-align:center;flex:1;">
+          <div style="font-size:18px;font-weight:600;color:#dc2626;">{pct_outside:.1f}%</div>
+          <div style="font-size:10px;color:#94a3b8;font-family:'JetBrains Mono',monospace;">outside bands</div>
+          <div style="font-size:9px;color:#cbd5e1;">potential anomalies</div>
+        </div>
+      </div>
+
+      <div style="border-top:1px solid #f1f5f9;padding-top:8px;margin-top:4px;">
+        <div style="font-size:10px;color:#64748b;line-height:1.6;">
+          <b>±{bb_std}σ</b> means the band covers <b>{pct_within:.1f}%</b> of a normal distribution.<br>
+          Any point outside is a <b>potential anomaly</b> — it doesn't fall within the expected range of the last <b>{bb_window} periods</b>.
+        </div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Common presets
+    st.markdown("<div style='margin-top:10px;font-size:10px;color:#94a3b8;font-family:JetBrains Mono,monospace;'>COMMON PRESETS</div>", unsafe_allow_html=True)
+    pc1, pc2, pc3 = st.columns(3)
+    with pc1:
+        st.markdown("<div style='text-align:center;background:#fef2f2;border-radius:8px;padding:6px 4px;font-size:10px;'><b style='color:#dc2626;'>1.5σ</b><br><span style='color:#94a3b8;'>86.6%</span></div>", unsafe_allow_html=True)
+    with pc2:
+        st.markdown("<div style='text-align:center;background:#eff6ff;border-radius:8px;padding:6px 4px;font-size:10px;'><b style='color:#6366f1;'>2.0σ</b><br><span style='color:#94a3b8;'>95.4%</span></div>", unsafe_allow_html=True)
+    with pc3:
+        st.markdown("<div style='text-align:center;background:#f0fdf4;border-radius:8px;padding:6px 4px;font-size:10px;'><b style='color:#059669;'>3.0σ</b><br><span style='color:#94a3b8;'>99.7%</span></div>", unsafe_allow_html=True)
+
     st.markdown("---")
     st.markdown("**📊 Chart Settings**")
     show_bands  = st.checkbox("Show BB bands",     value=True)
@@ -381,11 +442,39 @@ if df_raw is not None:
         anom    = plot_df[plot_df["_is_anom"]]
         g_anom_rate = len(anom)/len(plot_df)*100 if len(plot_df) else 0
 
-        st.markdown(
-            f'<span class="anom-count">⚡ {len(anom):,} anomalies in this group '
-            f'({g_anom_rate:.1f}%)</span>',
-            unsafe_allow_html=True)
-        st.markdown("<br>", unsafe_allow_html=True)
+        pct_in_band = 100 - g_anom_rate
+        import math as _math2
+        def _ncdf2(x): return (1 + _math2.erf(x / _math2.sqrt(2))) / 2
+        theoretical_pct = (_ncdf2(bb_std) - _ncdf2(-bb_std)) * 100
+
+        st.markdown(f"""
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:stretch;margin-bottom:14px;">
+
+          <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:10px 16px;min-width:160px;">
+            <div style="font-size:10px;color:#94a3b8;font-family:'JetBrains Mono',monospace;">POTENTIAL ANOMALIES</div>
+            <div style="font-size:22px;font-weight:600;color:#dc2626;">{len(anom):,}</div>
+            <div style="font-size:11px;color:#ef4444;">{g_anom_rate:.1f}% of this group</div>
+          </div>
+
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 16px;min-width:160px;">
+            <div style="font-size:10px;color:#94a3b8;font-family:'JetBrains Mono',monospace;">WITHIN EXPECTED RANGE</div>
+            <div style="font-size:22px;font-weight:600;color:#059669;">{len(normal):,}</div>
+            <div style="font-size:11px;color:#059669;">{pct_in_band:.1f}% of this group</div>
+          </div>
+
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 16px;flex:1;min-width:220px;">
+            <div style="font-size:10px;color:#94a3b8;font-family:'JetBrains Mono',monospace;margin-bottom:4px;">ℹ️ WHAT THIS MEANS</div>
+            <div style="font-size:11px;color:#475569;line-height:1.6;">
+              Points <b>outside the ±{bb_std}σ band</b> are <b>potential anomalies</b> — they fall
+              outside the expected range for this group's recent behaviour
+              (rolling {bb_window}-period window).<br>
+              <span style="color:#94a3b8;">Theoretically {theoretical_pct:.1f}% of data lies within ±{bb_std}σ for a normal distribution.
+              Actual: {pct_in_band:.1f}%.</span>
+            </div>
+          </div>
+
+        </div>
+        """, unsafe_allow_html=True)
 
         fig = go.Figure()
 
