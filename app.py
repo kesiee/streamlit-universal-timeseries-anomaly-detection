@@ -231,7 +231,7 @@ with st.sidebar:
     max_groups  = st.number_input("Max groups to process", 1, 50, 20,
                                   help="Cap for large cardinality group columns")
     st.markdown("---")
-    st.caption("Built by Shashank (KC) · [Portfolio](https://portfolio-shashank-kammanahalli.vercel.app)")
+    st.caption("Built by Shashank (KC) · [Portfolio](https://shashank-kammanahalli.vercel.app/)")
 
 # ── Header ────────────────────────────────────────────────────────────────────
 h1, h2 = st.columns([5,1])
