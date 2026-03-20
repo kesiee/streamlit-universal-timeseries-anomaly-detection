@@ -1,6 +1,6 @@
 # 🔍 Universal Time-Series Anomaly Detector
 
-Streamlitt link: https://app-crypto-live-dashboard-shashank.streamlit.app/
+Streamlitt link: [universal-timeseries-anomaly.streamlit.app](https://universal-timeseries-anomaly.streamlit.app/)
 
 Upload **any time-series dataset** in any format → get Bollinger Band anomaly detection per group.
 
